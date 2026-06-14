@@ -398,21 +398,25 @@ pub fn store_search(query: &str) -> Vec<(u32, String)> {
         Err(_) => return vec![],
     };
 
-    // Parse {"items":[{"id":588650,"name":"Dead Cells",...}, ...]}
-    let mut results = Vec::new();
-    for item in body.split("\"type\":\"app\"") {
-        let id = item.split("\"id\":").nth(1)
-            .and_then(|s| s.split([',', '}']).next())
-            .and_then(|s| s.trim().parse::<u32>().ok());
-        let name = item.split("\"name\":\"").nth(1)
-            .and_then(|s| s.split('"').next())
-            .map(|s| s.to_string());
-        if let (Some(id), Some(name)) = (id, name) {
-            results.push((id, name));
-        }
-        if results.len() >= 5 { break; }
-    }
-    results
+    let json: serde_json::Value = match serde_json::from_str(&body) {
+        Ok(v) => v,
+        Err(_) => return vec![],
+    };
+
+    json["items"]
+        .as_array()
+        .map(|items| {
+            items.iter()
+                .filter(|item| item["type"].as_str() == Some("app"))
+                .filter_map(|item| {
+                    let id = item["id"].as_u64()? as u32;
+                    let name = item["name"].as_str()?.to_string();
+                    Some((id, name))
+                })
+                .take(5)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Returns (percent, done, total) if shaders are currently compiling for appid
